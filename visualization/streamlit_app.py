@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 # =========================
@@ -13,7 +14,7 @@ st.set_page_config(page_title="UWE Bristol Dashboard", layout="wide")
 PX_TEMPLATE = "plotly_white"
 
 UWE_NAME = "UWE Bristol"
-COLOR_UWE = "#0072B2"             # UWE highlight (bold blue)
+COLOR_UWE = "#0072B2"             # UWE bold blue
 COLOR_COMPETITORS = [             # distinct, professional competitor colors
     "#6C757D",  # slate
     "#808000",  # olive
@@ -23,9 +24,16 @@ COLOR_COMPETITORS = [             # distinct, professional competitor colors
     "#9467BD",  # violet
     "#8C564B"   # brown
 ]
-COLOR_HIGHLIGHT = "#E69F00"       # callouts/annotations
+COLOR_HIGHLIGHT = "#E69F00"       # annotations/callouts
 COLOR_POSITIVE = "#009E73"        # positive indicators
 TEXT_DARK = "#111827"
+
+# colorblind‑safe list for subjects (Okabe–Ito + additions)
+SUBJECT_PALETTE = [
+    "#0072B2","#E69F00","#009E73","#D55E00","#CC79A7",
+    "#56B4E9","#F0E442","#7F7F7F","#332288","#88CCEE",
+    "#44AA99","#117733","#999933","#DDCC77","#661100"
+]
 
 FILE_PATH = "Guardian_Cleaned_Final.xlsx"
 RECENT_WINDOW_SIZE = 5
@@ -205,81 +213,62 @@ tab1, tab2, tab3 = st.tabs(["🏁 Overview", "📚 Subjects", "❓ Answers (Q1�
 # TAB 1: Overview
 # -----------------------------------------
 with tab1:
-    st.markdown("### For understanding")
-
-    c1, c2, c3 = st.columns(3)
-
-    # Satisfaction donut (UWE, focus year)
+    st.markdown("### Satisfaction (line charts)")
+    # Satisfaction lines (Course, Teaching, Feedback)
+    c1, c2 = st.columns([1.1, 1.9])
     uwe_year = inst_sliced[(inst_sliced["Institution"] == UWE_NAME) & (inst_sliced["Year"] == focus_year)]
-    if not uwe_year.empty and {"Satisfied with Course","Satisfied with Teaching","Satisfied with Feedback"}.issubset(uwe_year.columns):
-        sat = pd.DataFrame({
-            "Metric": ["Course", "Teaching", "Feedback"],
-            "Value": [
-                float(uwe_year["Satisfied with Course"].iloc[0]),
-                float(uwe_year["Satisfied with Teaching"].iloc[0]),
-                float(uwe_year["Satisfied with Feedback"].iloc[0]),
-            ]
-        })
-        fig_pie = px.pie(
-            sat, values="Value", names="Metric", hole=0.45,
-            title=f"Satisfaction • UWE ({focus_year})", template=PX_TEMPLATE,
-            color_discrete_sequence=[COLOR_UWE, "#66A9CF", "#A6CEE3"]
-        )
-        c1.plotly_chart(fig_pie, use_container_width=True)
-    else:
-        c1.info("Satisfaction metrics not available for focus year.")
+    uwe_ts = inst_sliced[inst_sliced["Institution"] == UWE_NAME].sort_values("Year")
+    sat_cols_all = ["Satisfied with Course","Satisfied with Teaching","Satisfied with Feedback"]
+    sat_cols = [c for c in sat_cols_all if c in inst_sliced.columns]
 
-    # Dual-axis: Rank (left, reversed) vs Guardian Score (right) — UWE only
+    if sat_cols and not uwe_ts.empty:
+        if not uwe_year.empty:
+            k1,k2,k3 = c1.columns(3)
+            if "Satisfied with Course" in sat_cols:  k1.metric("Course",  f"{uwe_year['Satisfied with Course'].iloc[0]:.1f}%")
+            if "Satisfied with Teaching" in sat_cols: k2.metric("Teaching",f"{uwe_year['Satisfied with Teaching'].iloc[0]:.1f}%")
+            if "Satisfied with Feedback" in sat_cols: k3.metric("Feedback",f"{uwe_year['Satisfied with Feedback'].iloc[0]:.1f}%")
+
+        fig_sat_lines = px.line(
+            uwe_ts, x="Year", y=sat_cols, markers=True, template=PX_TEMPLATE,
+            title="Student Satisfaction — UWE over time",
+            color_discrete_map={
+                "Satisfied with Course": COLOR_UWE,
+                "Satisfied with Teaching": "#66A9CF",
+                "Satisfied with Feedback": "#A6CEE3"
+            }
+        )
+        fig_sat_lines.update_traces(line=dict(width=3.2), marker=dict(size=8))
+        c2.plotly_chart(fig_sat_lines, use_container_width=True)
+    else:
+        st.info("Satisfaction time‑series not available.")
+
+    st.markdown("### Rank vs Guardian Score (clarified axes & styles)")
+    # Dual-axis: Rank (up = good) vs Guardian Score (up = good)
     uwe_series = inst_sliced[inst_sliced["Institution"] == UWE_NAME].sort_values("Year")
     if not uwe_series.empty:
         fig_dual = go.Figure()
+        # Rank (solid, bold, left axis reversed)
         fig_dual.add_trace(go.Scatter(
             x=uwe_series["Year"], y=uwe_series["Rank"], name="Rank (lower is better)",
             mode="lines+markers", line=dict(color=COLOR_UWE, width=4.8), marker=dict(size=10)
         ))
+        # Guardian Score (dotted, right axis)
         fig_dual.add_trace(go.Scatter(
-            x=uwe_series["Year"], y=uwe_series["Guardian Score"], name="Guardian Score",
+            x=uwe_series["Year"], y=uwe_series["Guardian Score"], name="Guardian Score (higher is better)",
             mode="lines+markers", yaxis="y2",
             line=dict(color="#333333", width=2.2, dash="dot"), marker=dict(size=7)
         ))
         fig_dual.update_layout(
-            template=PX_TEMPLATE, title="Rank vs Guardian Score (UWE)",
-            yaxis=dict(title="Rank", autorange="reversed"),
+            template=PX_TEMPLATE, title="UWE — Rank vs Guardian Score",
+            yaxis=dict(title="Rank (lower is better)", autorange="reversed"),
             yaxis2=dict(title="Guardian Score", overlaying="y", side="right"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
         )
-        c2.plotly_chart(fig_dual, use_container_width=True)
+        st.plotly_chart(fig_dual, use_container_width=True)
     else:
-        c2.info("No UWE rows in selected time range.")
+        st.info("No UWE rows in selected time range.")
 
-    # Satisfaction bars (UWE)
-    sat_cols = [c for c in ["Satisfied with Feedback","Satisfied with Course"] if c in inst_sliced.columns]
-    if sat_cols:
-        subset = inst_sliced[inst_sliced["Institution"] == UWE_NAME].sort_values("Year")
-        if not subset.empty:
-            fig_sat = px.bar(
-                subset, x="Year", y=sat_cols, barmode="group",
-                title="Satisfaction (UWE)", template=PX_TEMPLATE,
-                color_discrete_map={
-                    "Satisfied with Feedback": "#66A9CF",
-                    "Satisfied with Course": "#A6CEE3"
-                }
-            )
-            c3.plotly_chart(fig_sat, use_container_width=True)
-        else:
-            c3.info("No UWE rows to display.")
-    else:
-        c3.info("No satisfaction columns in data.")
-
-    st.markdown("#### Snapshot (UWE)")
-    cols_to_show = [c for c in ["Year","Rank","Guardian Score","Satisfied with Course","Satisfied with Teaching","Satisfied with Feedback"] if c in inst_sliced.columns]
-    uwetable = inst_sliced[inst_sliced["Institution"] == UWE_NAME][cols_to_show].sort_values("Year", ascending=False)
-    st.dataframe(uwetable, use_container_width=True)
-
-    st.divider()
-
-    # Comparison: Rank Over Time (earliest → latest)
-    st.markdown("### Comparison — Rank Over Time")
+    st.markdown("### Comparison — Rank Over Time (UWE vs competitors)")
     comp_df = inst_sliced[inst_sliced["Institution"].isin(chosen_insts)].sort_values(["Institution","Year"])
     if comp_df.empty:
         st.info("No data for selected institutions.")
@@ -293,33 +282,100 @@ with tab1:
         fig_cmp = emphasize_uwe(fig_cmp, COLOR_MAP)
         st.plotly_chart(fig_cmp, use_container_width=True)
 
+    st.markdown("### Competitor Analysis — Employability (Career after 15 months)")
+    # one row of donut pies, 2018→2022 (if available)
+    inst_year_list = sorted(inst_sliced["Year"].dropna().unique().tolist())
+    years_emp = [y for y in range(2018, 2023) if y in inst_year_list]
+    # shortlist picker
+    default_shortlist = [u for u in ["Nottingham Trent","Portsmouth","Oxford Brookes","Cardiff","Plymouth","Gloucestershire","Bournemouth","Bath Spa","Brighton"] if u in inst_names_all][:5]
+    shortlist = st.multiselect("Shortlist competitors", options=[i for i in inst_names_all if i != UWE_NAME],
+                               default=default_shortlist, key="emp_shortlist")
+
+    if years_emp and shortlist:
+        fig_pies = make_subplots(rows=1, cols=len(years_emp), specs=[[{"type":"domain"}]*len(years_emp)],
+                                 subplot_titles=[str(y) for y in years_emp])
+        for ci, yr in enumerate(years_emp, start=1):
+            dfy = inst_sliced[inst_sliced["Year"] == yr]
+            group = dfy[dfy["Institution"].isin([UWE_NAME] + shortlist)].copy()
+            # If metric missing, skip this year
+            if group.empty or "Career after 15 months" not in group.columns:
+                labels, values, colors = [UWE_NAME], [0], [COLOR_UWE]
+            else:
+                labels = group["Institution"].tolist()
+                values = group["Career after 15 months"].tolist()
+                # normalize to sum to 100 for a clean year-to-year share look
+                vals = np.array(values, dtype=float)
+                vals = np.maximum(vals, 0)
+                if vals.sum() == 0:
+                    vals = np.ones_like(vals)  # avoid divide-by-zero
+                colors = [COLOR_UWE if n == UWE_NAME else "#B8BCC2" for n in labels]
+                values = vals
+
+            fig_pies.add_trace(
+                go.Pie(labels=labels, values=values, name=str(yr),
+                       hole=0.45, textinfo="percent", insidetextorientation="auto",
+                       marker=dict(colors=colors)),
+                row=1, col=ci
+            )
+        fig_pies.update_layout(template=PX_TEMPLATE, showlegend=False, height=300)
+        st.plotly_chart(fig_pies, use_container_width=True)
+        st.caption("Share within selected group each year, using 'Career after 15 months' as the weight. UWE slice shown in bold blue.")
+    else:
+        st.info("Select at least one competitor and ensure years 2018–2022 exist.")
+
 # -----------------------------------------
 # TAB 2: Subjects
 # -----------------------------------------
 with tab2:
-    st.markdown("### Subject Performance (UWE)")
+    st.markdown("### Top Subjects — Five‑year Trend (Guardian Score and optional Rank)")
     if subj_sliced.empty:
         st.info("No UWE subject data in this time range.")
     else:
-        c1, c2 = st.columns([1.2, 1.8])
-        year_subject = c1.slider("Year (Top‑10 view)", min_value=int(min(subj_years)),
-                                 max_value=int(max(subj_years)), value=int(max(subj_years)), step=1)
-        latest_slice = subj_sliced[subj_sliced["Year"] == year_subject].copy()
-        if not latest_slice.empty and "Guardian Score" in latest_slice.columns:
-            top10 = latest_slice.nlargest(10, "Guardian Score").sort_values("Guardian Score")
-            fig_top = px.bar(
-                top10, x="Guardian Score", y="Subject", orientation="h",
-                title=f"Top 10 Subjects by Guardian Score ({year_subject})",
-                template=PX_TEMPLATE, color_discrete_sequence=[COLOR_UWE]
-            )
-            c1.plotly_chart(fig_top, use_container_width=True)
+        # find latest year available in sliced subject data
+        latest_subj_year = int(subj_sliced["Year"].max())
+        # choose Top N by latest Guardian Score
+        base_latest = subj_sliced[subj_sliced["Year"] == latest_subj_year].dropna(subset=["Guardian Score"])
+        if base_latest.empty:
+            st.info("No Guardian Score in latest year for subjects.")
         else:
-            c1.info("No Guardian Score for selected year.")
+            top_n_choice = st.radio("How many subjects?", ["Top 5", "Top 10"], horizontal=True)
+            top_n = 5 if top_n_choice == "Top 5" else 10
+            top_subjects = base_latest.nlargest(top_n, "Guardian Score")["Subject"].tolist()
 
-        subj_choice = c2.selectbox("Choose Subject", sorted(subj_sliced["Subject"].unique()))
+            # last five years (or all if fewer)
+            all_years_sorted = sorted(subj_sliced["Year"].dropna().unique().tolist())
+            last5_years = all_years_sorted[-5:] if len(all_years_sorted) >= 5 else all_years_sorted
+
+            trend_df = subj_sliced[subj_sliced["Subject"].isin(top_subjects) & subj_sliced["Year"].isin(last5_years)].copy()
+            trend_df = trend_df.sort_values(["Subject","Year"])
+
+            # Guardian Score trend (up = good)
+            fig_ts_score = px.line(
+                trend_df, x="Year", y="Guardian Score", color="Subject", markers=True,
+                template=PX_TEMPLATE, title=f"Top {top_n} Subjects — Guardian Score Trend (last 5 years)",
+                color_discrete_sequence=SUBJECT_PALETTE
+            )
+            fig_ts_score.update_traces(line=dict(width=3.2), marker=dict(size=7))
+            st.plotly_chart(fig_ts_score, use_container_width=True)
+
+            # Optional Rank trend (invert axis so up = good)
+            show_rank = st.checkbox("Show Rank trend for the same subjects (up = better rank)", value=True)
+            if show_rank and "Rank" in trend_df.columns:
+                fig_ts_rank = px.line(
+                    trend_df, x="Year", y="Rank", color="Subject", markers=True,
+                    template=PX_TEMPLATE, title=f"Top {top_n} Subjects — Rank Trend (last 5 years, lower is better)",
+                    color_discrete_sequence=SUBJECT_PALETTE
+                )
+                fig_ts_rank.update_traces(line=dict(width=3.2), marker=dict(size=7))
+                fig_ts_rank.update_yaxes(autorange="reversed", title_text="Rank (lower is better)")
+                st.plotly_chart(fig_ts_rank, use_container_width=True)
+
+    st.markdown("### Single Subject — Detailed Rank Trend")
+    if not subj_sliced.empty:
+        subj_choice = st.selectbox("Choose Subject", sorted(subj_sliced["Subject"].unique()))
         sdata = subj_sliced[subj_sliced["Subject"] == subj_choice].sort_values("Year")
         if sdata.empty:
-            c2.info("No data for selected subject.")
+            st.info("No data for selected subject.")
         else:
             fig_s = px.line(
                 sdata, x="Year", y="Rank", markers=True,
@@ -327,8 +383,8 @@ with tab2:
                 template=PX_TEMPLATE, color_discrete_sequence=[COLOR_UWE]
             )
             fig_s.update_traces(line=dict(width=4.8), marker=dict(size=10))
-            fig_s.update_yaxes(autorange="reversed")
-            c2.plotly_chart(fig_s, use_container_width=True)
+            fig_s.update_yaxes(autorange="reversed", title_text="Rank (lower is better)")
+            st.plotly_chart(fig_s, use_container_width=True)
 
 # -----------------------------------------
 # TAB 3: Answers (Q1–Q6)
@@ -368,7 +424,7 @@ with tab3:
                          template=PX_TEMPLATE, color_discrete_sequence=[COLOR_UWE],
                          title="UWE Rank Over Time")
         fig_q1.update_traces(line=dict(width=4.8), marker=dict(size=10))
-        fig_q1.update_yaxes(autorange="reversed")
+        fig_q1.update_yaxes(autorange="reversed", title_text="Rank (lower is better)")
         st.plotly_chart(fig_q1, use_container_width=True)
 
     # ============== Q2
@@ -426,7 +482,7 @@ with tab3:
             fig_q4.add_trace(go.Scatter(x=[next_year], y=[proj], mode="markers+text", name="Projected",
                                         text=[f"{next_year}: {proj:.1f}"], textposition="bottom center",
                                         marker=dict(color=COLOR_HIGHLIGHT, size=10)))
-        fig_q4.update_yaxes(autorange="reversed")
+        fig_q4.update_yaxes(autorange="reversed", title_text="Rank (lower is better)")
         fig_q4.update_layout(template=PX_TEMPLATE, title="Illustrative Rank Projection (direction only)")
         st.plotly_chart(fig_q4, use_container_width=True)
         st.caption("Linear trend for direction only — not a formal forecast.")
@@ -457,12 +513,11 @@ with tab3:
             )
             st.plotly_chart(fig_q5, use_container_width=True)
 
-            # quick “focus” suggestion (where UWE trails)
+            # quick focus suggestion (where UWE trails)
             eval_df = gap_df.copy()
-            # For SSR lower is better → flip sign so negative means UWE behind for all metrics
             eval_df["UWE minus Competitor"] = [
                 (eval_df.loc[i,UWE_NAME] - eval_df.loc[i,comp_choice]) if m != "Student to Staff Ratio"
-                else (eval_df.loc[i,comp_choice] - eval_df.loc[i,UWE_NAME])
+                else (eval_df.loc[i,comp_choice] - eval_df.loc[i,UWE_NAME])   # SSR lower is better
                 for i, m in enumerate(eval_df["Metric"])
             ]
             focus = eval_df.sort_values("UWE minus Competitor").head(2)["Metric"].tolist()
