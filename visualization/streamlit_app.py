@@ -10,11 +10,14 @@ import streamlit as st
 # =========================
 # Theme & Palette
 # =========================
+
 st.set_page_config(page_title="UWE Bristol Dashboard", layout="wide")
 PX_TEMPLATE = "plotly_white"
-
+# Color palette
+COLOR_UWE = "#0072B2"  
+# UWE name on board 
 UWE_NAME = "UWE Bristol"
-COLOR_UWE = "#0072B2"             # UWE bold blue
+          # UWE color sc
 COLOR_COMPETITORS = [             # distinct, professional competitor colors
     "#6C757D",  # slate
     "#808000",  # olive
@@ -65,11 +68,13 @@ def load_sheet(name: str) -> pd.DataFrame:
     if not os.path.exists(FILE_PATH):
         st.error(f"Data file not found: {os.path.abspath(FILE_PATH)}")
         st.stop()
+
     try:
         return clean(pd.read_excel(FILE_PATH, sheet_name=name))
     except Exception as e:
         st.error(f"Could not open sheet '{name}': {e}")
         st.stop()
+
 
 def slice_years(df: pd.DataFrame, mode: str):
     years = sorted(df["Year"].dropna().unique().tolist())
